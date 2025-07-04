@@ -1,0 +1,689 @@
+---
+title: "Exploratory Data Analysis of pipeline incidents in Canada "
+author: "Ismat Ara Khan"
+date: 
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+
+# Background:
+
+ The Canada Energy Regulator (CER) has a mandate to protect people and the environment during construction, operation, and abandonment of oil and gas pipelines and associated facilities. Despite its best efforts in prevention and mitigation, sometimes incidents that lead to adverse effects to people and the environment can happen. During the period from 2008 to 2020 there have been 723 incidents that involved release of substance.
+ 
+# Descriptive Analysis:
+
+ This is the basic and most commonly used analysis technique in Statistics. In this study descriptive methods will be employed mainly to identify the distribution of the number of incidents during the period from 2008 to 2020. Figures which illustrate the relationships between number of incidents and below factors are presented here.
+ 
+ 
+ 
+# Merging data 
+
+
+```{r}
+library(readxl)
+library(dplyr)
+pipeline_original=read_xlsx("C:/Users/Ismat/OneDrive/Desktop/fall24/Stat consulting/ass 1/pipeline-incidents-comprehensive-data.xlsx")
+case_study <- read_xlsx("C:/Users/Ismat/OneDrive/Desktop/fall24/Stat consulting/ass 1/ssc2021_case_study_cer_data.xlsx")
+
+case_study <- case_study |> rename(Incident_Number = `Event Number`)
+
+pipeline_original <- pipeline_original |> rename(Incident_Number = `Incident Number`)
+
+merged_data <- left_join(case_study, pipeline_original, by = "Incident_Number")
+```
+
+
+
+
+# Cleaning data
+
+Let's delete some columns which have too many NA values:
+
+
+Clean the characteric ones:
+```{r}
+
+
+
+# List of columns to keep
+keep_columns <- c("Product Category", "Product Type", "Volume Released", "Latitude.x", "Longitude.x")
+
+# Calculate missing values per column (works for both numeric and character columns)
+missing_values <- sapply(merged_data, function(x) sum(is.na(x)))
+
+# Identify columns to keep: either in 'keep_columns' or have <= 1000 missing values
+columns_to_keep <- names(missing_values)[missing_values <= 1000 | names(missing_values) %in% keep_columns]
+
+# Subset the data with the columns to keep
+cleaned_data <- merged_data[, columns_to_keep]
+
+# View the cleaned data structure
+str(cleaned_data)
+
+
+sum(is.na(cleaned_data))
+
+head(cleaned_data)
+
+
+```
+
+
+
+
+
+
+
+I cleaned the same columns which are Approximate Volume released (m3),Latitude.y, longitude.y
+
+
+```{r}
+# Install and load dplyr package if not already installed
+
+
+library(dplyr)
+
+# Remove the specified columns from merged_data
+cleaned_data <- cleaned_data %>%
+  select(-`Approximate Volume Released (m3)`, -Latitude.y, -Longitude.y)
+
+# View the updated dataset
+head(cleaned_data)
+
+
+```
+
+# Descriptive Statistics
+
+
+
+```{r}
+# Check the structure of the merged data
+str(cleaned_data)
+
+# Summary statistics for all columns
+summary(cleaned_data)
+
+# To get more specific descriptive statistics for numerical columns (e.g., mean, sd, etc.)
+# Use the sapply function for numeric columns only
+numeric_columns <- cleaned_data[, sapply(cleaned_data, is.numeric)]
+descriptive_stats <- sapply(numeric_columns, function(x) c(mean = mean(x, na.rm = TRUE), 
+                                                           sd = sd(x, na.rm = TRUE), 
+                                                           min = min(x, na.rm = TRUE), 
+                                                           max = max(x, na.rm = TRUE), 
+                                                           median = median(x, na.rm = TRUE)))
+
+# Display the descriptive statistics
+descriptive_stats
+
+```
+
+# Exploratory Data Analysis
+
+
+
+For maps, I will use this:
+
+```{r}
+
+library(geodata)
+library(tidyverse)
+library(sf)
+can1 <- geodata::gadm(country = "CAN", level = 1, path = tempdir(), version = "latest")
+Can1_sf <- st_as_sf(can1)
+Can1_sf <- st_transform(Can1_sf, 4269)
+
+ggplot() +
+  geom_sf(data = Can1_sf, fill = NA, color = "black") 
+
+```
+
+# general look of incident across Canada
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(readxl)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(dplyr)
+library(ggrepel)
+
+cleaned_data$Latitude.x <- as.numeric(cleaned_data$Latitude.x)
+cleaned_data$Longitude.x <- as.numeric(cleaned_data$Longitude.x)
+
+# Remove rows with missing lat/long
+cleaned_data <- cleaned_data[!is.na(cleaned_data$Latitude.x) & !is.na(cleaned_data$Longitude.x), ]
+
+# Convert the data to an sf object
+incidents_sf <- st_as_sf(cleaned_data, coords = c("Longitude.x", "Latitude.x"), crs = 4326)
+
+# Assuming you have Can1_sf as a spatial object for Canada map, we can plot it
+ggplot() +
+  geom_sf(data = Can1_sf, fill = NA, color = "black") +  # Base map of Canada
+  geom_sf(data = incidents_sf, color = "red", size = 1) +  # Incident points on the map
+  labs(title = "Incidents Across Canada", x = "Longitude", y = "Latitude")
+
+```
+
+
+
+
+# Danger Analysis
+
+
+#Count of ıncıdents by product type
+
+```{r}
+
+# Load dplyr for data manipulation
+library(dplyr)
+
+
+# Get the top 15 most frequent Product Types
+top_15_product_types <- cleaned_data %>%
+  count(`Product Type`) %>%
+  top_n(15, n) %>%
+  arrange(desc(n)) %>%
+  pull(`Product Type`)
+
+# Filter the data for only the top 15 Product Types
+filtered_data <- cleaned_data %>%
+  filter(`Product Type` %in% top_15_product_types)
+
+# Plot the top 5 most frequent Product Types
+ggplot(filtered_data, aes(x = `Product Type`)) +
+  geom_bar(fill = "lightcoral", color = "black") +
+  labs(title = "Top 15 Most Frequent Product Types in Pipeline Incidents", 
+       x = "Product Type", y = "Number of Incidents") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate labels for readability
+
+
+```
+
+This bar chart displays the number of pipeline incidents for top 15 product type.It is clear that “Natural Gas - Sweet”  has the highest number of incidents which is almost 500. Among others "Natural Gas - Sour" and "Crude Oil - Sweet" have almost the same number of incidents. Though they have the second and the third highest number of incidents but they are only around 50 which is very small number compare to the first one.  
+
+We may come to a conclusion that "Natural Gas - Sour" is most dangerous than other products that used so far.
+
+# Number of incidents - nearest populated center
+
+```{r}
+# Get the top 15 most frequent Nearest Populated Centres
+top_15_centres <- cleaned_data %>%
+  count(`Nearest Populated Centre`) %>%
+  top_n(15, n) %>%
+  arrange(desc(n)) %>%
+  pull(`Nearest Populated Centre`)
+
+# Filter the data for only the top 15 centres
+filtered_data_centres <- cleaned_data %>%
+  filter(`Nearest Populated Centre` %in% top_15_centres)
+
+# Plot the top 5 Nearest Populated Centres
+ggplot(filtered_data_centres, aes(x = `Nearest Populated Centre`)) +
+  geom_bar(fill = "lightblue", color = "black") +
+  labs(title = "Top 15 Most Frequent Nearest Populated Centres for Pipeline Incidents", 
+       x = "Nearest Populated Centre", y = "Number of Incidents") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate labels for readability
+
+
+```
+
+
+This bar chart displays the number of pipeline incidents based on their proximity to the nearest populated center. The top 15 populated centers with the highest number of incidents are shown.
+Among them Chetwynd, Edmonton, Saint John and Taylor have experience the highest number of incidents which can interpret as Centers with higher population densities might have more pipeline infrastructure, leading to a higher likelihood of incidents.
+
+# Trend Analysis
+
+
+```{r}
+library(readxl)
+library(ggplot2)
+library(dplyr)
+
+
+# Convert 'Reported Date' to Date format
+cleaned_data$`Reported Date` <- as.Date(cleaned_data$`Reported Date`, format="%Y-%m-%d")
+
+# Extract the year from the 'Reported Date'
+cleaned_data$Year <- format(cleaned_data$`Reported Date`, "%Y")
+
+# Group by year and count the number of incidents per year
+incident_trend <- table(cleaned_data$Year)
+incident_trend <- as.data.frame(incident_trend)
+names(incident_trend) <- c("Year", "Incidents")
+
+# Plot the trend of incidents over time
+ggplot(data = incident_trend, aes(x = Year, y = Incidents, group = 1)) +
+geom_line(color = "steelblue", size = 1) +
+geom_point(color = "maroon", size = 2) +
+labs(title = "Trend of Pipeline Incidents Over Time", x = "Year", y = "Number of Incidents") +
+theme_minimal() +
+theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+```
+
+
+
+
+The line chart displays the number of pipeline incidents for each year from 2008 to 2022.We can easily analyze the trend of pipeline incidents from this chart. In 2008, the number incidents was near 40, which increases sharply to 60 within one year and increase steadily for the next year. From 2010 the trend goes up and down till 2017 and after that year it decreases consistently over the years which goes to zero in 2020.Changes in regulations or enforcement might lead to fluctuations in the number of reported incidents.
+
+
+# Geographical Analysis
+
+```{r}
+
+library(readxl)
+library(ggplot2)
+library(dplyr)
+
+# Group by province and count the number of incidents per province
+incident_geo <- as.data.frame(table(cleaned_data$Province))
+names(incident_geo) <- c("Province", "Incidents")
+
+
+# Plot the geographical distribution of incidents
+ggplot(data = incident_geo, aes(x = reorder(Province, -Incidents), y = Incidents)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Geographical Distribution of Pipeline Incidents by Province", 
+       x = "Province", y = "Number of Incidents") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+This bar chart shows the distribution of pipeline incidents across different provinces. It highlights that "Alberta" and "British Columbia"  provinces have experienced more incidents compared to others.
+
+
+# Pipeline Incidents by Province in Canada
+
+
+
+
+
+```{r}
+library(ggplot2)
+library(rnaturalearth)
+library(sf)
+library(ggrepel)
+
+# Group by province and count the number of incidents per province
+incident_geo <- as.data.frame(table(cleaned_data$Province))
+names(incident_geo) <- c("Province", "Incidents")
+
+# Get the map of Canada
+canada_map <- ne_states(country = "canada", returnclass = "sf")
+
+# Province name matching (modify if necessary)
+province_name_map <- c(
+  "Alberta" = "Alberta", 
+  "British Columbia" = "British Columbia", 
+  "Manitoba" = "Manitoba", 
+  "New Brunswick" = "New Brunswick", 
+  "Newfoundland and Labrador" = "Newfoundland and Labrador", 
+  "Nova Scotia" = "Nova Scotia", 
+  "Ontario" = "Ontario", 
+  "Prince Edward Island" = "Prince Edward Island", 
+  "Quebec" = "Quebec", 
+  "Saskatchewan" = "Saskatchewan"
+)
+
+# Merge the incidents data with the Canada map
+incident_geo$Province <- province_name_map[incident_geo$Province]
+canada_map <- merge(canada_map, incident_geo, by.x = "name", by.y = "Province", all.x = TRUE)
+
+# Replace NAs with 0 incidents
+canada_map$Incidents[is.na(canada_map$Incidents)] <- 0
+
+# Calculate centroids for province names
+canada_map_centroids <- st_centroid(canada_map)
+
+# Convert centroids to a data frame with coordinates for scatter plot
+centroid_coords <- st_coordinates(canada_map_centroids)
+centroid_df <- data.frame(Province = canada_map$name, Incidents = canada_map$Incidents,
+                          X = centroid_coords[, 1], Y = centroid_coords[, 2])
+
+# Plot the map with scatter points and labels using geom_text_repel to avoid overlaps
+ggplot() +
+  geom_sf(data = canada_map, fill = "lightblue", color = "black") +  # Background map
+  geom_point(data = centroid_df, aes(x = X, y = Y, color = Incidents), size = 4) +  # Scatter plot points with color
+  geom_text_repel(data = centroid_df, aes(x = X, y = Y, label = Province), size = 3, color = "black") +  # Province labels
+  scale_color_gradient(low = "green", high = "red", name = "Incidents") +  # Color gradient based on incidents
+  labs(title = "Pipeline Incidents by Province in Canada", x = "", y = "") +
+  theme_minimal()
+
+```
+
+
+This heatmap provides the clear picture about the frequency of incidents according to the province which may shows that the province that has higher population densities have more pipeline infrastructure, leading to a higher likelihood of incidents.
+
+
+# Incident type analysis
+
+```{r}
+# Load necessary libraries
+library(readxl)
+library(ggplot2)
+library(dplyr)
+
+# Group by 'Incident Types' and count the number of incidents for each type
+incident_type_analysis <- as.data.frame(table(cleaned_data$`Incident Types`))
+names(incident_type_analysis) <- c("Incident_Type", "Incidents")
+
+# Plot the analysis of incidents by type
+ggplot(data = incident_type_analysis, aes(x = reorder(Incident_Type, -Incidents), y = Incidents)) +
+  geom_bar(stat = "identity", fill = "lightcoral") +
+  labs(title = "Analysis of Pipeline Incidents by Type", x = "Incident Type", y = "Number of Incidents") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+ This bar chart categorizes pipeline incidents based on their types. It provides insights into the most common types of incidents occurring in pipelines and in this case Release of Substances is the most common.
+
+
+
+# Incidents by Company and Province
+
+
+
+
+
+```{r}
+# Load necessary libraries
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+
+# Summarize the number of incidents by Company and Province
+cleaned_summary <- cleaned_data %>%
+  group_by(Company, Province) %>%
+  summarise(Incident_Count = n(), .groups = 'drop')
+
+# Filter to keep only the top N categories (e.g., top 15)
+top_n <- 15  # Change this to the desired number of top categories
+top_categories <- cleaned_summary %>%
+  top_n(top_n, Incident_Count) %>%
+  arrange(desc(Incident_Count))
+
+
+# Stacked bar plot of incidents by Company and Province
+ggplot(top_categories, aes(x = Company, y = Incident_Count, fill = Province)) +
+  geom_bar(stat = "identity") +  # Default is 'stack', so no need to specify position
+  ggtitle("Number of Incidents by Company and Province") +
+  xlab("Company") +
+  ylab("Count of Incidents") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1")+
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+
+```
+
+
+ This stacked bar chart displays the number of pipeline incidents for each company, further broken down by province. It helps identify which companies and provinces have higher incident counts.
+
+
+
+
+
+# Number of Incidents for top 15 What happened Categories
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Count occurrences of each "What happened category"
+category_counts <- cleaned_data %>%
+  group_by(`What happened category`) %>%
+  summarise(Incident_Count = n()) %>%
+  ungroup()
+
+library(stringr)
+
+# Use str_wrap to wrap long category names to a fixed width
+category_counts$`What happened category` <- str_wrap(category_counts$`What happened category`, width = 15)
+
+
+# Filter to keep only the top N categories (e.g., top 5)
+top_n <- 15  # Change this to the desired number of top categories
+top_categories <- category_counts %>%
+  top_n(top_n, Incident_Count) %>%
+  arrange(desc(Incident_Count))
+
+# Create a histogram for the top categories
+ggplot(top_categories, aes(x = reorder(`What happened category`, -Incident_Count), y = Incident_Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = paste("Top", top_n, "What Happened Categories"),
+       x = "What Happened Category", y = "Number of Incidents") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+```
+
+By categorizing incidents based on what happened, we can identify the most frequent scenarios leading to pipeline failures. The bar chart shows top 15 what happened categories where “Equipment Failure” , “Corrosion and Cracking” and "Defect and Deterioration" are the most common categories, it indicates that these are prevalent issues in pipeline operations compare to others.
+
+
+
+# Number of Incidents for top 15 Why it happened Categories
+
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Count occurrences of each "Why it happened category"
+category_counts <- cleaned_data %>%
+  group_by(`Why it happened category`) %>%
+  summarise(Incident_Count = n()) %>%
+  ungroup()
+
+library(stringr)
+
+# Use str_wrap to wrap long category names to a fixed width
+category_counts$`Why it happened category` <- str_wrap(category_counts$`Why it happened category`, width = 15)
+
+
+# Filter to keep only the top N categories (e.g., top 5)
+top_n <- 15  # Change this to the desired number of top categories
+top_categories <- category_counts %>%
+  top_n(top_n, Incident_Count) %>%
+  arrange(desc(Incident_Count))
+
+# Create a histogram for the top categories
+ggplot(top_categories, aes(x = reorder(`Why it happened category`, -Incident_Count), y = Incident_Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = paste("Top", top_n, "Why it Happened Categories"),
+       x = "Why it Happened Category", y = "Number of Incidents") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+```
+
+
+This bar chart displays the top 15 categories explaining why the pipeline incidents occurred. It helps understand the common causes behind these incidents.the bar chart shows that "maintenance" is the main cause which lead to the highest number of incidents ,more than 300 , where the second main cause is "Engineering and Planning". 
+
+Regulatory bodies can use this analysis to ensure compliance with safety standards.
+
+
+
+
+
+
+# Proportion of population density according to incident number
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+
+
+# Clean the Population Density data
+cleaned_data <- cleaned_data %>%
+  mutate(Population_Density_Cleaned = case_when(
+    grepl("Unknown Population Density", `Population Density`) ~ "Unknown",
+    grepl("10 or fewer dwelling units", `Population Density`) ~ "Low Density",
+    grepl("11 to 45 dwelling units", `Population Density`) ~ "Medium Density",
+    grepl("46 or more dwelling units", `Population Density`) ~ "High Density",
+    TRUE ~ "Other"  # Optional for any other cases
+  ))
+# Count incidents per cleaned population density category
+density_counts <- cleaned_data %>%
+  group_by(Population_Density_Cleaned) %>%
+  summarise(Incident_Count = n()) %>%
+  ungroup()
+
+# Create a pie chart for the proportion of incidents by cleaned population density category
+ggplot(density_counts, aes(x = "", y = Incident_Count, fill = Population_Density_Cleaned)) +
+  geom_col() +
+  coord_polar(theta = "y") +
+  labs(title = "Proportion of Incidents by Population Density Category",
+       fill = "Population Density Category") +
+  theme_minimal()
+
+```
+
+
+Analyzing the proportion of pipeline incidents by population density can provide valuable insights into how population density affects the frequency and nature of these incidents. This pie chart shows that incidents are more frequent in the low density region (rural area). 
+
+# Relation between province and population Density with incident number
+
+
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+
+# Clean the Population Density data and summarize incident counts
+cleaned_data <- cleaned_data %>%
+  mutate(Population_Density_Cleaned = case_when(
+    grepl("Unknown Population Density", `Population Density`) ~ "Unknown",
+    grepl("10 or fewer dwelling units", `Population Density`) ~ "Low Density",
+    grepl("11 to 45 dwelling units", `Population Density`) ~ "Medium Density",
+    grepl("46 or more dwelling units", `Population Density`) ~ "High Density",
+    TRUE ~ "Other"  # Optional for any other cases
+  ))
+
+
+# Count incidents by Province and Population Density Category
+incident_counts_by_density <- cleaned_data %>%
+  group_by(Province, Population_Density_Cleaned) %>%
+  summarise(Incident_Count = n(), .groups = 'drop')
+
+# Create a stacked bar chart for incident counts by province and population density category
+ggplot(incident_counts_by_density, aes(x = Province, y = Incident_Count, fill = Population_Density_Cleaned)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Incident Counts by Province and Population Density Category",
+       x = "Province", 
+       y = "Number of Incidents", 
+       fill = "Population Density Category") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+
+```
+
+By grouping incidents by province and population density, stakeholders can gain a comprehensive understanding of the factors influencing pipeline safety in different regions.This chart shows that all provinces follow same pattern that low density region (i.e. rural area) has the biggest proportion other than unknown.
+
+
+
+# Conclusion:
+
+By incorporating these insights into emergency response planning, stakeholders can enhance the safety and preparedness of densely populated areas, reducing the impact of pipeline incidents on public health and safety.
+
+
+
+
+
+
+
+# Modelling Part
+
+
+```{r}
+#Summarize data by Nearest Populated Center
+full_summary <- cleaned_data %>%
+group_by(`Nearest Populated Centre`) %>%
+summarise(incident_count = n(),
+Population_Density = first(`Population Density`),
+Latitude = first(Latitude.x),
+Longitude = first(Longitude.x)) %>%
+ungroup()
+full_summary_clean <- na.omit(full_summary)
+full_summary[complete.cases(full_summary[, c("incident_count", "Nearest Populated Centre", "Population_Density", "Latitude", "Longitude")]),]
+
+# Convert Nearest Populated Center to factor if it isn't already
+
+full_summary_clean$`Nearest Populated Centre` <- as.factor(full_summary_clean$`Nearest Populated Centre`)
+# Ensure other variables are numeric
+full_summary_clean$Population_Density <- as.factor(full_summary_clean$Population_Density)
+full_summary_clean$Latitude <- as.numeric(full_summary_clean$Latitude)
+full_summary_clean$Longitude <- as.numeric(full_summary_clean$Longitude)
+
+# Now apply the summarise again after cleaning
+incident_rate_data <- full_summary_clean %>%
+group_by(`Nearest Populated Centre`) %>%
+summarise(
+total_incidents = sum(incident_count),
+Population_Density = mean(as.numeric(Population_Density), na.rm = TRUE), # Convert and handle NAs
+Latitude = mean(as.numeric(Latitude), na.rm = TRUE), # Convert and handle NAs
+Longitude = mean(as.numeric(Longitude), na.rm = TRUE) # Convert and handle NAs
+)
+str(incident_rate_data)
+```
+
+```{r}
+# Poisson regression model after cleaning
+poisson_model_rate <- glm(total_incidents ~ Population_Density + Latitude + Longitude,
+data = incident_rate_data, family = poisson())
+#Model summary
+summary(poisson_model_rate)
+```
+
+
+
+Null deviance = 780.88: This is the deviance of the model without any predictors (just the intercept).
+Residual deviance = 684.97: This shows the deviance after including the predictors (Population_Density,
+Latitude, Longitude). Lower deviance values indicate a better fit.
+The residual deviance is relatively high compared to the null deviance, suggesting that while the model
+explains some variability in incident counts, there may be other unaccounted factors.
+AIC = 1474.4: The Akaike Information Criterion (AIC) is a measure of model quality. Lower AIC values
+indicate a better fit, this can be compared to other models to assess relative performance.
+Reducing the number of predictors might get rid of overfitting problem.
+
+
+
+```{r}
+# Calculate the dispersion statistic
+dispersion_statistic <- sum(residuals(poisson_model_rate , type = "pearson")^2) / 327
+dispersion_statistic
+```
+
+
+It is bigger than one, so there is overdispersion. 
+
+
+
+
+
+
+
+
+
+
